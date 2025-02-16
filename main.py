@@ -1,63 +1,71 @@
 import os
+from pathlib import Path
 import subprocess
 import sys
 from time import sleep
 
-tModLoaderServer_bat = (r"C:\Program Files (x86)"
-                        r"\Steam\steamapps\common\tModLoader\start-tModLoaderServer.bat")
-custom_serverconfig = os.path.join(
-    os.path.dirname(sys.argv[0]),
-    "custom_serverconfig.txt"
-)
+# Initialize the tModLoaderServer.bat file path and the custom server config path.
+tModLoaderServer_bat = (Path(r"C:\Program Files (x86)\Steam\steamapps\common\tModLoader\start-tModLoaderServer.bat")
+                        .resolve())
+
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    exec_path = Path(sys.executable)
+else:
+    exec_path = Path(__file__)
+
+CUSTOM_SERVERCONFIG = exec_path.parent / "custom_serverconfig.txt"
 
 
-def wait_exit(status_code: int):
+def wait_exit(status_code: int) -> None:
     input("Press Enter to exit...")
     sys.exit(status_code)
 
 
-def get_modpacks_folder():
-    user_path = os.path.expanduser("~")
+def get_modpacks_folder() -> Path | None:
     ending_path = r"Documents\My Games\Terraria\tModLoader\Mods\ModPacks"
     modpacks_folder_paths = [
-        os.path.join(user_path, "OneDrive", ending_path),
-        os.path.join(user_path, ending_path)
+        Path.home() / "OneDrive" / ending_path,
+        Path.home() / ending_path
     ]
 
     for path in modpacks_folder_paths:
-        if os.path.isdir(path):
+        if path.is_dir():
             return path
     return None
 
 
-def main():
-    # Check for start-tModLoaderServer.bat file and ModPacks folder.
-    if not os.path.isfile(tModLoaderServer_bat):
-        print("start-tModLoaderServer.bat file not found!")
-        wait_exit(1)
+def get_worlds_folder() -> Path | None:
+    ending_path = r"Documents\My Games\Terraria\tModLoader\Worlds"
+    worlds_folder_paths = [
+        Path.home() / "OneDrive" / ending_path,
+        Path.home() / ending_path
+    ]
 
-    modpacks_folder = get_modpacks_folder()
-    if not os.path.isdir(modpacks_folder):
-        print("ModPacks folder not found!")
-        wait_exit(1)
+    for path in worlds_folder_paths:
+        if path.is_dir():
+            return path
+    return None
 
+
+# Menu for what modpack you want to start the server with.
+def modpack_context_menu(modpacks_folder: Path) -> None:
     # Obtain valid ModPacks from its folder.
     modpacks = []
-    for root, dirnames, filenames in os.walk(modpacks_folder):
-        # Only proceed when the current root is in the Mods folder.
-        if not os.path.basename(root) == "Mods":
+    for modpack_dir in modpacks_folder.iterdir():
+        enabled_json: Path = modpack_dir / "Mods" / "enabled.json"
+        if not enabled_json.exists():
             continue
 
-        for name in filenames:
-            if name == "enabled.json" and os.path.exists(os.path.join(root, name)):
-                # Store the modpack name and its enabled.json path as a tuple.
-                modpack_name = root.split("\\")[-2]
-                modpacks.append((modpack_name, os.path.join(root, name)))
-                break
+        # Store the modpack name and its enabled.json path as a tuple.
+        modpacks.append((modpack_dir.name, enabled_json))
+
+    if not modpacks:
+        print("There are no current modpacks in your directory! Using currently enabled mods instead...")
+        sleep(1)
+        return
 
     # Display the selection of possible modpacks you want to start the server with.
     SPACING = 20
-    option = None
     while True:
         print("Select which modpack you want to start your tModLoader server with.\n")
 
@@ -68,35 +76,88 @@ def main():
         print("d".ljust(SPACING) + "Start server with no modpacks.")
         print("q".ljust(SPACING) + "Quit")
 
-        print()
-        option = input("Input option: ")
-
-        # Quit if you select that option.
+        option = input("\nInput option: ")
         if option == "q" or option == "Q":
             print("Exiting...")
             sleep(1)
             sys.exit(0)
+        elif option == "d" or option == "D":
+            return
+        elif option.isnumeric() and 0 < int(option) <= len(modpacks):
+            selected_modpack = modpacks[int(option)-1][1]
+            with open(CUSTOM_SERVERCONFIG, 'a') as f:
+                f.write(f"modpack={selected_modpack}\n")
+            return
+        else:
+            print("\nThis option is not valid! Try again...\n")
 
-        # Input validation here.
-        valid_option = option == "d" or option == "D" or \
-            (option.isnumeric() and 0 < int(option) <= len(modpacks))
 
-        if valid_option:
-            break
+def world_context_menu(worlds_folder: Path) -> None:
+    # Obtain valid worlds from the worlds folder.
+    worlds = []
+    for child in worlds_folder.iterdir():
+        curr_path: Path = child
+        if curr_path.exists() and curr_path.suffix == ".wld":
+            worlds.append(curr_path)
 
-        print("\nThis option is not valid! Try again...\n")
+    if not worlds:
+        print("There are no current worlds in your directory! Using the default context menu instead...")
+        sleep(1)
+        return
+
+    # Display the selection of possible worlds you want to start the server with.
+    SPACING = 20
+    while True:
+        print("Select which world you want to start your tModLoader server with.\n")
+
+        for i in range(len(worlds)):
+            world_name = worlds[i].stem
+            number = str(i+1)
+            print(number.ljust(SPACING) + world_name)
+        print("d".ljust(SPACING) + "Start server with default context.")
+        print("q".ljust(SPACING) + "Quit")
+
+        option = input("\nInput option: ")
+        if option == "q" or option == "Q":
+            print("Exiting...")
+            sleep(1)
+            sys.exit(0)
+        elif option == "d" or option == "D":
+            return
+        elif option.isnumeric() and 0 < int(option) <= len(worlds):
+            selected_world = worlds[int(option)-1]
+            with open(CUSTOM_SERVERCONFIG, 'a') as f:
+                f.write(f"world={selected_world}\n")
+            return
+        else:
+            print("\nThis option is not valid! Try again...\n")
 
 
-    # Create a custom serverconfig file to open the start-tModLoader.bat file with. Or not with option d.
-    if option == "d" or option == "D":
-        subprocess.Popen([tModLoaderServer_bat])
-        sys.exit(0)
+def main():
+    # Check for start-tModLoaderServer.bat file and ModPacks folder.
+    if not tModLoaderServer_bat.exists():
+        print("start-tModLoaderServer.bat file not found!")
+        wait_exit(1)
 
-    selected_modpack = modpacks[int(option)-1][1]
-    with open(custom_serverconfig, "w") as f:
-        f.write(f"modpack={selected_modpack}")
+    modpacks_folder = get_modpacks_folder()
+    if not modpacks_folder:
+        print("ModPacks folder not found!")
+        wait_exit(1)
 
-    subprocess.Popen([tModLoaderServer_bat, "-config", custom_serverconfig, "-nosteam"])
+    worlds_folder = get_worlds_folder()
+    if not worlds_folder:
+        print("tModLoader Worlds folder not found!")
+        wait_exit(1)
+
+    # Remove existing custom server config if it exists.
+    if CUSTOM_SERVERCONFIG.exists():
+        CUSTOM_SERVERCONFIG.unlink()
+
+    modpack_context_menu(modpacks_folder)
+    world_context_menu(worlds_folder)
+
+    # Start the tModLoaderServer.bat file with the custom config options.
+    subprocess.Popen([tModLoaderServer_bat, "-config", CUSTOM_SERVERCONFIG, '-nosteam'])
 
 
 if __name__ == '__main__':

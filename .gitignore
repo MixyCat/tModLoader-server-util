@@ -1,5 +1,5 @@
 .idea
+.venv
 build
-custom_serverconfig.txt
-dist/custom_serverconfig.txt
+**/custom_serverconfig.txt
 *.spec
