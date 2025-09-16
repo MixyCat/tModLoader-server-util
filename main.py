@@ -4,9 +4,9 @@ import subprocess
 import sys
 from time import sleep
 
-# Initialize the tModLoaderServer.bat file path and the custom server config path.
-tModLoaderServer_bat = (Path(r"C:\Program Files (x86)\Steam\steamapps\common\tModLoader\start-tModLoaderServer.bat")
-                        .resolve())
+# Initialize the tModLoaderServer.ssh file path, the busybox executable and the custom server config path.
+tModLoaderServer_sh = (Path(r"C:\Program Files (x86)\Steam\steamapps\common\tModLoader\start-tModLoaderServer.sh").resolve())
+busybox_exe = (Path(r"C:\Program Files (x86)\Steam\steamapps\common\tModLoader\LaunchUtils\busybox64.exe").resolve())
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     exec_path = Path(sys.executable)
@@ -134,9 +134,13 @@ def world_context_menu(worlds_folder: Path) -> None:
 
 
 def main():
-    # Check for start-tModLoaderServer.bat file and ModPacks folder.
-    if not tModLoaderServer_bat.exists():
-        print("start-tModLoaderServer.bat file not found!")
+    # Check for start-tModLoaderServer.sh file, busybox executable and ModPacks folder.
+    if not tModLoaderServer_sh.exists():
+        print("start-tModLoaderServer.sh file not found!")
+        wait_exit(1)
+    
+    if not busybox_exe.exists():
+        print("busybox.exe executable not found!")
         wait_exit(1)
 
     modpacks_folder = get_modpacks_folder()
@@ -157,7 +161,10 @@ def main():
     world_context_menu(worlds_folder)
 
     # Start the tModLoaderServer.bat file with the custom config options.
-    subprocess.Popen([tModLoaderServer_bat, "-config", CUSTOM_SERVERCONFIG, '-nosteam'])
+    args = [busybox_exe, "bash", tModLoaderServer_sh, "-config", CUSTOM_SERVERCONFIG, "-nosteam"]
+    subprocess.run(args)
+    print("Done!")
+    input("Press enter to exit...")
 
 
 if __name__ == '__main__':
